@@ -102,7 +102,7 @@ def main():
     check_tokens()
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    delta = timedelta(days=20).total_seconds()
+    delta = timedelta(minutes=10).total_seconds()
     current_timestamp = int(time.time() - delta)
     homework_status = ''
 
@@ -119,7 +119,7 @@ def main():
             else:
                 time.sleep(RETRY_TIME)
                 continue
-            current_timestamp = int(time.time() - delta)
+            current_timestamp = int(time.time())
             time.sleep(RETRY_TIME)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
