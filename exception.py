@@ -1,10 +1,9 @@
-class HomeworkKeyException(Exception):
+class HomeworkCheckException(Exception):
     """Проверка доступности ключей в запросе."""
 
-    def __init__(self, key):
+    def __init__(self):
         """Инициализация класса."""
-        self.key = key
-        self.message = f'Ключ "{key}" в запросе недоступен'
+        self.message = 'Полученные данные не соответствуют ожидаемым'
         super().__init__(self.message)
 
     def __str__(self):

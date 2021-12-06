@@ -1,32 +1,50 @@
 import os
 import time
+import logging
 
 import requests
 import telegram
 
 from datetime import timedelta
 from http import HTTPStatus
+from logging import Formatter, StreamHandler
+from logging.handlers import RotatingFileHandler
 
 from dotenv import load_dotenv
 
 from exception import (
     BotSendMeassageException,
+    HomeworkCheckException,
     EndpointNotAccessException,
-    HomeworkKeyException,
     TokenNoExistException,
 )
-from logger import logger
 
 load_dotenv()
+
+formatter = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+handler = RotatingFileHandler(
+    filename='homework.log',
+    maxBytes=5242880,
+    backupCount=1,
+)
+handler.setFormatter(formatter)
+
+stream_handler = StreamHandler()
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)
+logger.addHandler(stream_handler)
+
 
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-RETRY_TIME = 600
+RETRY_TIME = 6
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
-
 
 HOMEWORK_STATUSES = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
@@ -51,30 +69,29 @@ def get_api_answer(current_timestamp):
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
     api_answer = requests.get(ENDPOINT, headers=HEADERS, params=params)
-    return api_answer
+    if api_answer.status_code != HTTPStatus.OK:
+        raise EndpointNotAccessException(ENDPOINT)
+    return api_answer.json()
 
 
 def check_response(response):
-    """Проверка статуса ответа на запрос."""
-    if response.status_code == HTTPStatus.OK:
-        return True
-    raise EndpointNotAccessException(ENDPOINT)
+    """Проверка данных в ответе."""
+    if type(response) != dict:
+        raise TypeError
+    homework = response['homeworks']
+    if isinstance(homework, list):
+        return homework
+    raise HomeworkCheckException()
 
 
 def parse_status(homework):
     """Получение данных по текущему домашнему заданию."""
-    try:
-        if len(homework['homeworks']) == 0:
-            message = 'Домашняя работа ещё не была отправлена на проверку'
-            logger.info(message)
-            return False
-        homework_name = homework['homeworks'][0]['homework_name']
-        homework_status = homework['homeworks'][0]['status']
-        verdict = HOMEWORK_STATUSES[homework_status]
-        return f'Изменился статус проверки работы "{homework_name}". {verdict}'
-    except KeyError as error:
-        key = error.args[0]
-        raise HomeworkKeyException(key)
+    homework_name = homework.get('homework_name')
+    homework_status = homework.get('status')
+    verdict = HOMEWORK_STATUSES[homework_status]
+    message = ('Изменился статус проверки работы '
+               f'"{homework_name}". {verdict}')
+    return message
 
 
 def check_tokens():
@@ -82,7 +99,7 @@ def check_tokens():
     if PRACTICUM_TOKEN and TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
         return True
     logger.critical('Отсутствуют переменные окружения')
-    raise TokenNoExistException()
+    return False
 
 
 def check_homework_status(message, homework_status):
@@ -99,32 +116,30 @@ def check_homework_status(message, homework_status):
 
 def main():
     """Основная логика работы бота."""
-    check_tokens()
-
-    bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    delta = timedelta(minutes=10).total_seconds()
-    current_timestamp = int(time.time() - delta)
-    homework_status = ''
+    if check_tokens():
+        bot = telegram.Bot(token=TELEGRAM_TOKEN)
+        delta = timedelta(minutes=10).total_seconds()
+        current_timestamp = int(time.time() - delta)
+    else:
+        raise TokenNoExistException()
 
     while True:
         try:
             api_answer = get_api_answer(current_timestamp)
             check_response(api_answer)
-            homework = api_answer.json()
-            message = parse_status(homework)
-            # Проверяем сообщение и статус домашнего задания
-            if message and check_homework_status(message, homework_status):
-                homework_status = message
-                send_message(bot, message)
+            homework = api_answer['homeworks']
+            if homework:
+                message = parse_status(homework[0])
             else:
+                logger.info('Статус не изменился')
                 time.sleep(RETRY_TIME)
                 continue
+            send_message(bot, message)
             current_timestamp = int(time.time())
             time.sleep(RETRY_TIME)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             logger.error(message)
-            # Отправляем сообщение о сбое создателю бота
             send_message(bot, message)
             time.sleep(RETRY_TIME)
 
