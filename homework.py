@@ -169,9 +169,7 @@ def main():
             # Формируем сообщение об ошибке и увеличиваем счётчик ошибок
             message = f'Сбой в работе программы: {error}'
             error_count += 1
-
             logger.error(message)
-
             # Проверяем полученную ошибку с предыдущей
             if check_error(error, previous_error, error_count):
                 previous_error = str(error)
