@@ -95,9 +95,9 @@ def check_response(response):
 
 def parse_status(homework):
     """Получение данных по текущему домашнему заданию."""
-    homework_name = homework.get('homework_name', None)
-    homework_status = homework.get('status', None)
-    if not homework_name and not homework_status:
+    homework_name = homework.get('homework_name')
+    homework_status = homework.get('status')
+    if homework_name is None and homework_status is None:
         raise HomeworkCheckException()
     try:
         verdict = HOMEWORK_VERDICTS[homework_status]
@@ -125,11 +125,9 @@ def get_timestamp(api_answer):
     return current_timestamp
 
 
-def check_error(error, previous_error, error_count):
-    """Сравнение полученной ошибки с предыдущей."""
-    if str(error) == previous_error and error_count != 5:
-        return False
-    return True
+def check_message(message, previous_message, error_count=0):
+    """Сравнение сформированного сообщения с предыдущим."""
+    return message != previous_message or error_count not in range(1, 5)
 
 
 def main():
@@ -143,7 +141,7 @@ def main():
         raise TokenNoExistException()
 
     # Создаём пустую переменную предыдущей ошибки и счётчик ошибок
-    previous_error = None
+    previous_message = None
     error_count = 0
 
     while True:
@@ -160,7 +158,9 @@ def main():
                 time.sleep(RETRY_TIME)
                 continue
             # Отправляем пользователю сообщение
-            send_message(bot, message)
+            if check_message(message, previous_message):
+                previous_message = message
+                send_message(bot, message)
             # Получем новое время отсчёта
             current_timestamp = get_timestamp(api_answer)
             # Ждём RETRY_TIME секунд до запуска нового цикла
@@ -168,13 +168,13 @@ def main():
         except Exception as error:
             # Формируем сообщение об ошибке и увеличиваем счётчик ошибок
             message = f'Сбой в работе программы: {error}'
-            error_count += 1
             logger.error(message)
             # Проверяем полученную ошибку с предыдущей
-            if check_error(error, previous_error, error_count):
-                previous_error = str(error)
+            if check_message(message, previous_message, error_count):
+                previous_message = message
                 error_count = 0
                 send_message(bot, message)
+            error_count += 1
             # Ждём RETRY_TIME секунд до запуска нового цикла
             time.sleep(RETRY_TIME)
 
