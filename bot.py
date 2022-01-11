@@ -38,7 +38,7 @@ HOMEWORK_VERDICTS = {
 formatter = Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 handler = RotatingFileHandler(
-    filename='homework.log',
+    filename='yandexHWbot.log',
     maxBytes=5242880,
     backupCount=1,
 )
